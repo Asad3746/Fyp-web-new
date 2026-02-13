@@ -26,6 +26,10 @@ from dbHandler import insertData, retrieveData
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "criminal-detection-web-secret-change-in-production")
 app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024  # 16 MB max upload
+# So session cookie works over HTTPS on Render
+if os.environ.get("RENDER"):
+    app.config["SESSION_COOKIE_SECURE"] = True
+    app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 
 USERS_FILE = os.path.join(BASE_DIR, "users.json")
 FACE_SAMPLES_DIR = os.path.join(BASE_DIR, "face_samples")
@@ -40,21 +44,33 @@ for d in (UPLOAD_FOLDER, PROFILE_PICS_DIR):
 
 
 def load_users():
+    users = {}
     if os.path.exists(USERS_FILE):
         try:
             with open(USERS_FILE, "r", encoding="utf-8") as f:
                 data = json.load(f)
-                return data if isinstance(data, dict) else {}
+                users = data if isinstance(data, dict) else {}
         except Exception:
             pass
-    return {}
+    # Ensure default admin exists (important on deploy when users.json is missing)
+    if "admin@1234" not in users:
+        users["admin@1234"] = "12345678"
+        try:
+            with open(USERS_FILE, "w", encoding="utf-8") as f:
+                json.dump(users, f, indent=2)
+        except Exception:
+            pass
+    return users
 
 
 def save_users(users):
     if "admin@1234" not in users:
         users["admin@1234"] = "12345678"
-    with open(USERS_FILE, "w", encoding="utf-8") as f:
-        json.dump(users, f, indent=2)
+    try:
+        with open(USERS_FILE, "w", encoding="utf-8") as f:
+            json.dump(users, f, indent=2)
+    except Exception:
+        pass
 
 
 def login_required(f):
@@ -64,6 +80,12 @@ def login_required(f):
             return redirect(url_for("login_page"))
         return f(*args, **kwargs)
     return wrapped
+
+
+@app.route("/health")
+def health():
+    """Simple health check - use this to verify the app is running on Render."""
+    return jsonify({"status": "ok", "message": "Criminal Detection System is running"}), 200
 
 
 @app.route("/")
@@ -105,13 +127,23 @@ def cctv_page():
 
 
 # ---------- Auth API ----------
+# Default admin - always accepted so login works on first deploy (e.g. Render)
+DEFAULT_ADMIN_USER = "admin@1234"
+DEFAULT_ADMIN_PASS = "12345678"
+
+
 @app.route("/api/auth/login", methods=["POST"])
 def api_login():
     data = request.get_json() or {}
     username = (data.get("username") or "").strip()
-    password = data.get("password") or ""
+    password = (data.get("password") or "").strip()
     if not username or not password:
         return jsonify({"ok": False, "error": "Username and password required"}), 400
+    # Hardcoded default admin so it always works when users.json is missing (e.g. on Render)
+    if username == DEFAULT_ADMIN_USER and password == DEFAULT_ADMIN_PASS:
+        session["logged_in"] = True
+        session["username"] = username
+        return jsonify({"ok": True, "redirect": url_for("dashboard")})
     users = load_users()
     if users.get(username) != password:
         return jsonify({"ok": False, "error": "Invalid username or password"}), 401

@@ -27,7 +27,7 @@
    - **Build Command:**  
      `pip install -r requirements.txt`
    - **Start Command:**  
-     `gunicorn app:app`
+     `gunicorn app:app --bind 0.0.0.0:$PORT`
    - **Instance type:** **Free**.
 
 4. **Environment variables (optional but good for production)**
