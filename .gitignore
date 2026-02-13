@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.eggs/
+dist/
+build/
+*.spec.bak
+
+# Virtual environment
+venv/
+env/
+.venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Project-specific: generated/sensitive (don't push to repo)
+users.json
+profile_pics/
+*.exe
+
+# Optional: keep face_samples in repo (training data)
+# If face_samples is too large, uncomment next line:
+# face_samples/
+
+# OS
+.DS_Store
+Thumbs.db

@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+{% block title %}Detect Criminal{% endblock %}
+{% block body %}
+<div class="app-layout">
+  <header class="app-header">
+    <a href="{{ url_for('dashboard') }}" class="back-link" aria-label="Back">←</a>
+    <h1 class="accent-cyan">Detect Criminal</h1>
+  </header>
+  <div class="sep"></div>
+
+  <div class="content-two-col">
+    <div class="panel">
+      <h3>Image</h3>
+      <input type="file" id="image-input" accept="image/*">
+      <div class="image-preview-wrap mt-1" id="preview-wrap">
+        <span class="text-muted">Select an image to scan</span>
+      </div>
+      <div class="cctv-controls mt-1">
+        <button type="button" class="btn btn-primary" id="recognize-btn" disabled>Recognize</button>
+      </div>
+      <div id="detect-message" class="message hidden mt-1"></div>
+    </div>
+
+    <div class="panel">
+      <h3>Detected Criminals</h3>
+      <ul class="detected-list" id="detected-list">
+        <li class="text-muted">No detections yet</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<div id="profile-modal" class="modal-overlay hidden">
+  <div class="modal">
+    <h2>Criminal Profile</h2>
+    <div id="profile-content"></div>
+    <button type="button" class="btn btn-ghost modal-close" id="modal-close">Close</button>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function() {
+  const imageInput = document.getElementById('image-input');
+  const previewWrap = document.getElementById('preview-wrap');
+  const recognizeBtn = document.getElementById('recognize-btn');
+  const detectedList = document.getElementById('detected-list');
+  const detectMessage = document.getElementById('detect-message');
+  const profileModal = document.getElementById('profile-modal');
+  const profileContent = document.getElementById('profile-content');
+  const modalClose = document.getElementById('modal-close');
+
+  let currentFile = null;
+
+  function showMessage(text, type) {
+    detectMessage.textContent = text;
+    detectMessage.className = 'message mt-1 ' + (type === 'error' ? 'error' : 'success');
+    detectMessage.classList.remove('hidden');
+  }
+
+  imageInput.addEventListener('change', function() {
+    const file = (this.files || [])[0];
+    currentFile = file;
+    if (!file) {
+      previewWrap.innerHTML = '<span class="text-muted">Select an image to scan</span>';
+      recognizeBtn.disabled = true;
+      return;
+    }
+    const url = URL.createObjectURL(file);
+    previewWrap.innerHTML = '<img src="' + url + '" alt="Preview">';
+    recognizeBtn.disabled = false;
+    detectedList.innerHTML = '<li class="text-muted">Click Recognize to scan</li>';
+    detectMessage.classList.add('hidden');
+  });
+
+  recognizeBtn.addEventListener('click', async function() {
+    if (!currentFile) return;
+    recognizeBtn.disabled = true;
+    detectMessage.classList.add('hidden');
+    const fd = new FormData();
+    fd.append('image', currentFile);
+    try {
+      const res = await fetch('/api/criminal/detect', { method: 'POST', body: fd });
+      const data = await res.json();
+      if (data.ok && data.recognized && data.recognized.length > 0) {
+        detectedList.innerHTML = data.recognized.map(r =>
+          '<li><a href="#" data-name="' + encodeURIComponent(r.name) + '">' + escapeHtml(r.name) + '</a></li>'
+        ).join('');
+        detectedList.querySelectorAll('a').forEach(a => {
+          a.addEventListener('click', function(e) {
+            e.preventDefault();
+            showProfile(this.dataset.name);
+          });
+        });
+      } else {
+        showMessage(data.error || 'No criminal recognized.', 'error');
+        detectedList.innerHTML = '<li class="text-muted">No detections</li>';
+      }
+    } catch (err) {
+      showMessage('Network error.', 'error');
+    } finally {
+      recognizeBtn.disabled = false;
+    }
+  });
+
+  function escapeHtml(s) {
+    const div = document.createElement('div');
+    div.textContent = s;
+    return div.innerHTML;
+  }
+
+  async function showProfile(name) {
+    try {
+      const res = await fetch('/api/criminal/' + encodeURIComponent(name));
+      const data = await res.json();
+      if (!data.ok) {
+        profileContent.innerHTML = '<p class="text-muted">Profile not found.</p>';
+      } else {
+        const d = data.data || {};
+        let html = '<div class="profile-grid">';
+        if (data.profile_url) {
+          html += '<img src="' + data.profile_url + '" alt="Profile">';
+        } else {
+          html += '<div class="text-muted">No photo</div>';
+        }
+        html += '<dl class="profile-details">';
+        for (const [k, v] of Object.entries(d)) {
+          html += '<dt>' + escapeHtml(k) + '</dt><dd>' + escapeHtml(v || '---') + '</dd>';
+        }
+        html += '</dl></div>';
+        profileContent.innerHTML = html;
+      }
+      profileModal.classList.remove('hidden');
+    } catch (err) {
+      profileContent.innerHTML = '<p class="text-muted">Failed to load profile.</p>';
+      profileModal.classList.remove('hidden');
+    }
+  }
+
+  modalClose.addEventListener('click', function() {
+    profileModal.classList.add('hidden');
+  });
+  profileModal.addEventListener('click', function(e) {
+    if (e.target === profileModal) profileModal.classList.add('hidden');
+  });
+})();
+</script>
+{% endblock %}

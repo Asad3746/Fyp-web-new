@@ -1,0 +1,198 @@
+{% extends "base.html" %}
+{% block title %}CCTV Surveillance{% endblock %}
+{% block body %}
+<div class="app-layout">
+  <header class="app-header">
+    <a href="{{ url_for('dashboard') }}" class="back-link" aria-label="Back">←</a>
+    <h1 class="accent-indigo">Live CCTV Surveillance</h1>
+  </header>
+  <div class="sep"></div>
+
+  <div class="content-two-col">
+    <div class="panel">
+      <h3>Live Feed</h3>
+      <div class="cctv-video-wrap" id="video-wrap">
+        <video id="cctv-video" autoplay playsinline muted></video>
+        <div id="video-placeholder" class="text-muted" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;">Start surveillance to begin</div>
+      </div>
+      <div class="cctv-controls">
+        <button type="button" class="btn btn-primary" id="start-btn">Start Surveillance</button>
+        <button type="button" class="btn btn-ghost hidden" id="stop-btn">Stop</button>
+      </div>
+      <canvas id="capture-canvas" class="hidden"></canvas>
+    </div>
+
+    <div class="panel">
+      <h3>Detected Criminals</h3>
+      <ul class="detected-list" id="detected-list">
+        <li class="text-muted">No current detections</li>
+      </ul>
+      <h3 class="mt-1">Recent Detections</h3>
+      <ul class="recent-list" id="recent-list">
+        <li class="text-muted">None yet</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<div id="profile-modal" class="modal-overlay hidden">
+  <div class="modal">
+    <h2>Criminal Profile</h2>
+    <div id="profile-content"></div>
+    <button type="button" class="btn btn-ghost modal-close" id="modal-close">Close</button>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function() {
+  const video = document.getElementById('cctv-video');
+  const videoPlaceholder = document.getElementById('video-placeholder');
+  const startBtn = document.getElementById('start-btn');
+  const stopBtn = document.getElementById('stop-btn');
+  const captureCanvas = document.getElementById('capture-canvas');
+  const detectedList = document.getElementById('detected-list');
+  const recentList = document.getElementById('recent-list');
+  const profileModal = document.getElementById('profile-modal');
+  const profileContent = document.getElementById('profile-content');
+  const modalClose = document.getElementById('modal-close');
+
+  let stream = null;
+  let intervalId = null;
+  const CAPTURE_INTERVAL_MS = 500;
+
+  function updateRecent() {
+    fetch('/api/recent-detections')
+      .then(r => r.json())
+      .then(data => {
+        if (data.ok && data.detections && data.detections.length > 0) {
+          recentList.innerHTML = data.detections.map(d =>
+            '<li><a href="#" data-name="' + encodeURIComponent(d[0]) + '">' + escapeHtml(d[0]) + '</a><small>' + d[1] + '</small></li>'
+          ).join('');
+          recentList.querySelectorAll('a').forEach(a => {
+            a.addEventListener('click', function(e) {
+              e.preventDefault();
+              showProfile(this.dataset.name);
+            });
+          });
+        } else {
+          recentList.innerHTML = '<li class="text-muted">None yet</li>';
+        }
+      })
+      .catch(() => {});
+  }
+
+  function escapeHtml(s) {
+    const div = document.createElement('div');
+    div.textContent = s;
+    return div.innerHTML;
+  }
+
+  async function showProfile(name) {
+    try {
+      const res = await fetch('/api/criminal/' + encodeURIComponent(name));
+      const data = await res.json();
+      if (!data.ok) {
+        profileContent.innerHTML = '<p class="text-muted">Profile not found.</p>';
+      } else {
+        const d = data.data || {};
+        let html = '<div class="profile-grid">';
+        if (data.profile_url) {
+          html += '<img src="' + data.profile_url + '" alt="Profile">';
+        } else {
+          html += '<div class="text-muted">No photo</div>';
+        }
+        html += '<dl class="profile-details">';
+        for (const [k, v] of Object.entries(d)) {
+          html += '<dt>' + escapeHtml(k) + '</dt><dd>' + escapeHtml(v || '---') + '</dd>';
+        }
+        html += '</dl></div>';
+        profileContent.innerHTML = html;
+      }
+      profileModal.classList.remove('hidden');
+    } catch (err) {
+      profileContent.innerHTML = '<p class="text-muted">Failed to load profile.</p>';
+      profileModal.classList.remove('hidden');
+    }
+  }
+
+  function sendFrame() {
+    if (!stream || video.readyState < 2) return;
+    captureCanvas.width = video.videoWidth;
+    captureCanvas.height = video.videoHeight;
+    const ctx = captureCanvas.getContext('2d');
+    ctx.drawImage(video, 0, 0);
+    captureCanvas.toBlob(function(blob) {
+      const reader = new FileReader();
+      reader.onloadend = function() {
+        const base64 = reader.result;
+        fetch('/api/criminal/recognize-frame', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ frame: base64 })
+        })
+          .then(r => r.json())
+          .then(data => {
+            if (data.ok && data.recognized && data.recognized.length > 0) {
+              detectedList.innerHTML = data.recognized.map(r =>
+                '<li><a href="#" data-name="' + encodeURIComponent(r.name) + '">' + escapeHtml(r.name) + '</a></li>'
+              ).join('');
+              detectedList.querySelectorAll('a').forEach(a => {
+                a.addEventListener('click', function(e) {
+                  e.preventDefault();
+                  showProfile(this.dataset.name);
+                });
+              });
+              updateRecent();
+            }
+          })
+          .catch(() => {});
+      };
+      reader.readAsDataURL(blob);
+    }, 'image/jpeg', 0.85);
+  }
+
+  startBtn.addEventListener('click', async function() {
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+      video.srcObject = stream;
+      videoPlaceholder.classList.add('hidden');
+      startBtn.classList.add('hidden');
+      stopBtn.classList.remove('hidden');
+      detectedList.innerHTML = '<li class="text-muted">Scanning...</li>';
+      intervalId = setInterval(function() {
+        sendFrame();
+      }, CAPTURE_INTERVAL_MS);
+      updateRecent();
+    } catch (err) {
+      alert('Could not access camera: ' + (err.message || err));
+    }
+  });
+
+  stopBtn.addEventListener('click', function() {
+    if (intervalId) {
+      clearInterval(intervalId);
+      intervalId = null;
+    }
+    if (stream) {
+      stream.getTracks().forEach(t => t.stop());
+      stream = null;
+    }
+    video.srcObject = null;
+    videoPlaceholder.classList.remove('hidden');
+    startBtn.classList.remove('hidden');
+    stopBtn.classList.add('hidden');
+    detectedList.innerHTML = '<li class="text-muted">No current detections</li>';
+  });
+
+  modalClose.addEventListener('click', function() {
+    profileModal.classList.add('hidden');
+  });
+  profileModal.addEventListener('click', function(e) {
+    if (e.target === profileModal) profileModal.classList.add('hidden');
+  });
+
+  updateRecent();
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,14 @@
+# Render Blueprint - deploy from dashboard: New > Blueprint, connect repo, then select this file
+# Or create Web Service manually with the settings below
+services:
+  - type: web
+    name: criminal-detection-system
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      # Set in Render Dashboard: Secret Files or Environment:
+      # SUPABASE_URL, SUPABASE_KEY (if not in config.py)
+      # SECRET_KEY (optional; set for production)

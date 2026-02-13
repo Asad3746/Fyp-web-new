@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+{% block title %}Login - Criminal Detection System{% endblock %}
+{% block body %}
+<div class="auth-wrap">
+  <div class="auth-card">
+    <h1>Welcome to Criminal Detection System</h1>
+    <p class="subtitle">Please sign in to continue.</p>
+
+    <div class="auth-tabs">
+      <button type="button" class="active" data-tab="login">Login</button>
+      <button type="button" data-tab="signup">Create Account</button>
+    </div>
+
+    <div id="message" class="message hidden"></div>
+
+    <form id="login-form" class="auth-form active" method="post" action="">
+      <div class="form-group">
+        <label for="login-username">Username</label>
+        <input type="text" id="login-username" name="username" required autocomplete="username">
+      </div>
+      <div class="form-group">
+        <label for="login-password">Password</label>
+        <input type="password" id="login-password" name="password" required autocomplete="current-password">
+      </div>
+      <div class="actions">
+        <button type="submit" class="btn btn-primary">Login</button>
+      </div>
+    </form>
+
+    <form id="signup-form" class="auth-form" method="post" action="">
+      <div class="form-group">
+        <label for="signup-username">Username</label>
+        <input type="text" id="signup-username" name="username" required autocomplete="username">
+      </div>
+      <div class="form-group">
+        <label for="signup-password">Password</label>
+        <input type="password" id="signup-password" name="password" required autocomplete="new-password">
+      </div>
+      <div class="form-group">
+        <label for="signup-confirm">Confirm Password</label>
+        <input type="password" id="signup-confirm" name="confirm" required autocomplete="new-password">
+      </div>
+      <div class="actions">
+        <button type="submit" class="btn btn-secondary">Create Account</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function() {
+  const tabs = document.querySelectorAll('.auth-tabs button');
+  const loginForm = document.getElementById('login-form');
+  const signupForm = document.getElementById('signup-form');
+  const messageEl = document.getElementById('message');
+
+  function showMessage(text, type) {
+    messageEl.textContent = text;
+    messageEl.className = 'message ' + (type === 'error' ? 'error' : 'success');
+    messageEl.classList.remove('hidden');
+  }
+  function hideMessage() {
+    messageEl.classList.add('hidden');
+  }
+
+  tabs.forEach(btn => {
+    btn.addEventListener('click', function() {
+      const tab = this.dataset.tab;
+      tabs.forEach(b => b.classList.remove('active'));
+      this.classList.add('active');
+      loginForm.classList.toggle('active', tab === 'login');
+      signupForm.classList.toggle('active', tab === 'signup');
+      hideMessage();
+    });
+  });
+
+  document.getElementById('login-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    hideMessage();
+    const username = document.getElementById('login-username').value.trim();
+    const password = document.getElementById('login-password').value;
+    if (!username || !password) {
+      showMessage('Please enter username and password.', 'error');
+      return;
+    }
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+      });
+      const data = await res.json();
+      if (data.ok && data.redirect) {
+        window.location.href = data.redirect;
+      } else {
+        showMessage(data.error || 'Login failed', 'error');
+      }
+    } catch (err) {
+      showMessage('Network error. Please try again.', 'error');
+    }
+  });
+
+  document.getElementById('signup-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    hideMessage();
+    const username = document.getElementById('signup-username').value.trim();
+    const password = document.getElementById('signup-password').value;
+    const confirm = document.getElementById('signup-confirm').value;
+    if (!username || !password || !confirm) {
+      showMessage('All fields are required.', 'error');
+      return;
+    }
+    if (password !== confirm) {
+      showMessage('Passwords do not match.', 'error');
+      return;
+    }
+    if (password.length < 4) {
+      showMessage('Password must be at least 4 characters.', 'error');
+      return;
+    }
+    try {
+      const res = await fetch('/api/auth/signup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password, confirm })
+      });
+      const data = await res.json();
+      if (data.ok) {
+        showMessage(data.message || 'Account created. Please login.', 'success');
+        if (data.redirect) setTimeout(() => { window.location.href = data.redirect; }, 1500);
+      } else {
+        showMessage(data.error || 'Signup failed', 'error');
+      }
+    } catch (err) {
+      showMessage('Network error. Please try again.', 'error');
+    }
+  });
+})();
+</script>
+{% endblock %}

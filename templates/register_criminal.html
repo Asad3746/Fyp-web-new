@@ -1,0 +1,179 @@
+{% extends "base.html" %}
+{% block title %}Register Criminal{% endblock %}
+{% block body %}
+<div class="app-layout">
+  <header class="app-header">
+    <a href="{{ url_for('dashboard') }}" class="back-link" aria-label="Back">←</a>
+    <h1 class="accent-purple">Register Criminal</h1>
+  </header>
+  <div class="sep"></div>
+
+  <div class="content-two-col">
+    <div class="panel">
+      <h3>Select Images (min 5)</h3>
+      <input type="file" id="image-input" accept="image/*" multiple>
+      <div class="image-preview-wrap mt-1" id="preview-wrap">
+        <span class="text-muted">No images selected</span>
+      </div>
+      <div class="slideshow-wrap hidden" id="slideshow-wrap">
+        <button type="button" id="slide-prev">‹</button>
+        <img id="slide-img" alt="Slide">
+        <button type="button" id="slide-next">›</button>
+      </div>
+      <div class="slideshow-caption hidden" id="slide-caption"></div>
+      <p class="text-muted mt-1">Choose at least 5 images containing the criminal's face. Select one as profile image below.</p>
+    </div>
+
+    <div class="panel">
+      <h3>Enter Criminal Details</h3>
+      <p class="text-muted mb-1">* Required fields</p>
+      <form id="register-form" class="register-form">
+        <div class="form-row">
+          <label>Name <span class="required">*</span></label>
+          <input type="text" name="name" required>
+        </div>
+        <div class="form-row">
+          <label>Father's Name</label>
+          <input type="text" name="father_name">
+        </div>
+        <div class="form-row">
+          <label>Mother's Name</label>
+          <input type="text" name="mother_name">
+        </div>
+        <div class="form-row">
+          <label>Gender <span class="required">*</span></label>
+          <input type="text" name="gender" required placeholder="e.g. male/female">
+        </div>
+        <div class="form-row">
+          <label>DOB (yyyy-mm-dd)</label>
+          <input type="date" name="dob">
+        </div>
+        <div class="form-row">
+          <label>Blood Group</label>
+          <input type="text" name="blood_group">
+        </div>
+        <div class="form-row">
+          <label>Identification Mark <span class="required">*</span></label>
+          <input type="text" name="identification_mark" required>
+        </div>
+        <div class="form-row">
+          <label>Nationality <span class="required">*</span></label>
+          <input type="text" name="nationality" required>
+        </div>
+        <div class="form-row">
+          <label>Religion <span class="required">*</span></label>
+          <input type="text" name="religion" required>
+        </div>
+        <div class="form-row">
+          <label>Crimes Done <span class="required">*</span></label>
+          <input type="text" name="crimes_done" required>
+        </div>
+        <div class="form-row hidden" id="profile-row">
+          <label>Profile Image</label>
+          <select name="profile_image_index" id="profile-select">
+            <option value="1">Image 1</option>
+          </select>
+        </div>
+        <div id="form-message" class="message hidden mt-1"></div>
+        <button type="submit" class="btn btn-primary mt-1">Register Criminal</button>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function() {
+  const imageInput = document.getElementById('image-input');
+  const previewWrap = document.getElementById('preview-wrap');
+  const slideshowWrap = document.getElementById('slideshow-wrap');
+  const slideImg = document.getElementById('slide-img');
+  const slideCaption = document.getElementById('slide-caption');
+  const slidePrev = document.getElementById('slide-prev');
+  const slideNext = document.getElementById('slide-next');
+  const profileSelect = document.getElementById('profile-select');
+  const profileRow = document.getElementById('profile-row');
+  const form = document.getElementById('register-form');
+  const formMessage = document.getElementById('form-message');
+
+  let selectedFiles = [];
+  let currentSlide = 0;
+
+  function showFormMessage(text, type) {
+    formMessage.textContent = text;
+    formMessage.className = 'message mt-1 ' + (type === 'error' ? 'error' : 'success');
+    formMessage.classList.remove('hidden');
+  }
+
+  imageInput.addEventListener('change', function() {
+    const files = Array.from(this.files || []);
+    if (files.length < 5) {
+      previewWrap.innerHTML = '<span class="text-muted">Please select at least 5 images.</span>';
+      slideshowWrap.classList.add('hidden');
+      profileRow.classList.add('hidden');
+      selectedFiles = [];
+      return;
+    }
+    selectedFiles = files;
+    currentSlide = 0;
+    previewWrap.innerHTML = '';
+    slideshowWrap.classList.remove('hidden');
+    profileRow.classList.remove('hidden');
+    profileSelect.innerHTML = files.map((_, i) => '<option value="' + (i + 1) + '">Image ' + (i + 1) + '</option>').join('');
+    updateSlide();
+  });
+
+  function updateSlide() {
+    if (selectedFiles.length === 0) return;
+    const file = selectedFiles[currentSlide];
+    const url = URL.createObjectURL(file);
+    slideImg.src = url;
+    slideCaption.textContent = 'Image ' + (currentSlide + 1) + ' of ' + selectedFiles.length;
+  }
+
+  slidePrev.addEventListener('click', function() {
+    if (selectedFiles.length <= 1) return;
+    currentSlide = (currentSlide - 1 + selectedFiles.length) % selectedFiles.length;
+    updateSlide();
+  });
+  slideNext.addEventListener('click', function() {
+    if (selectedFiles.length <= 1) return;
+    currentSlide = (currentSlide + 1) % selectedFiles.length;
+    updateSlide();
+  });
+
+  form.addEventListener('submit', async function(e) {
+    e.preventDefault();
+    if (selectedFiles.length < 5) {
+      showFormMessage('Please select at least 5 images first.', 'error');
+      return;
+    }
+    const fd = new FormData();
+    selectedFiles.forEach(f => fd.append('images[]', f));
+    const profileIdx = form.querySelector('[name="profile_image_index"]').value;
+    fd.append('profile_image_index', profileIdx);
+    ['name','father_name','mother_name','gender','dob','blood_group','identification_mark','nationality','religion','crimes_done'].forEach(k => {
+      fd.append(k, (form.querySelector('[name="' + k + '"]') || {}).value || '');
+    });
+
+    formMessage.classList.add('hidden');
+    const submitBtn = form.querySelector('button[type="submit"]');
+    submitBtn.disabled = true;
+    try {
+      const res = await fetch('/api/criminal/register', { method: 'POST', body: fd });
+      const data = await res.json();
+      if (data.ok) {
+        showFormMessage(data.message || 'Criminal registered successfully.', 'success');
+        setTimeout(() => { window.location.href = '{{ url_for("dashboard") }}'; }, 1500);
+      } else {
+        showFormMessage(data.error || 'Registration failed', 'error');
+      }
+    } catch (err) {
+      showFormMessage('Network error. Please try again.', 'error');
+    } finally {
+      submitBtn.disabled = false;
+    }
+  });
+})();
+</script>
+{% endblock %}
